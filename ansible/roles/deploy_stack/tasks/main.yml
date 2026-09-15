@@ -22,7 +22,7 @@
   community.docker.docker_compose_v2:
     project_src: /opt/gitops-microservice-platform
     pull: always
-  register: pull_result
+  register: deploy_stack_pull_result
   ignore_errors: true
 
 - name: Bring the stack up (build locally if images aren't pre-built/pushed yet)
