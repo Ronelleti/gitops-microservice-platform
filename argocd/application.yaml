@@ -7,7 +7,7 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/your-org/gitops-microservice-platform.git
+    repoURL: https://github.com/Ronelleti/gitops-microservice-platform.git
     targetRevision: main
     path: k8s/overlays/prod
 

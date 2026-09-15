@@ -123,6 +123,7 @@ docker compose up --build
 5. **Point Ansible at it:**
    ```bash
    cd ../ansible
+   ansible-galaxy collection install -r requirements.yml
    cp inventory.ini.example inventory.ini
    # edit inventory.ini: ansible_host = terraform output instance_public_ip
    ansible-playbook playbook.yml

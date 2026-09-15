@@ -11,11 +11,11 @@ patches:
   - path: ui-config-patch.yaml
 
 images:
-  - name: ghcr.io/your-org/webapp-api
+  - name: ghcr.io/ronelleti/webapp-api
     newTag: stable
-  - name: ghcr.io/your-org/webapp-ui
+  - name: ghcr.io/ronelleti/webapp-ui
     newTag: stable
-  - name: ghcr.io/your-org/webapp-db
+  - name: ghcr.io/ronelleti/webapp-db
     newTag: stable
 
 replicas:

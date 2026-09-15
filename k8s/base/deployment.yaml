@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: microservice
-          image: ghcr.io/your-org/gitops-microservice-platform:latest
+          image: ghcr.io/ronelleti/gitops-microservice-platform:latest
           ports:
             - containerPort: 8080
           envFrom:

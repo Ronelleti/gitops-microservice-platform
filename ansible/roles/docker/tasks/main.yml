@@ -1,11 +1,11 @@
 ---
 - name: Update apt cache
-  apt:
+  ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
 
 - name: Install prerequisite packages
-  apt:
+  ansible.builtin.apt:
     name:
       - ca-certificates
       - curl
@@ -13,20 +13,20 @@
     state: present
 
 - name: Install Docker Engine and Compose plugin
-  apt:
+  ansible.builtin.apt:
     name:
       - docker.io
       - docker-compose-v2
     state: present
 
 - name: Ensure Docker is enabled and running
-  systemd:
+  ansible.builtin.systemd:
     name: docker
     enabled: true
     state: started
 
 - name: Add deploy user to the docker group
-  user:
+  ansible.builtin.user:
     name: "{{ ansible_user }}"
     groups: docker
     append: true
