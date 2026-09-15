@@ -30,4 +30,3 @@
     name: "{{ ansible_user }}"
     groups: docker
     append: true
-

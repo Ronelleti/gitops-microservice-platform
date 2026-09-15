@@ -30,4 +30,3 @@
     project_src: /opt/gitops-microservice-platform
     build: always
     state: present
-
