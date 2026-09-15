@@ -1,0 +1,12 @@
+---
+- name: Configure host and deploy the microservice stack
+  hosts: webservers
+  become: true
+
+  vars:
+    python_image: "{{ python_image | default('gitops-python-app:local') }}"
+    java_image: "{{ java_image | default('gitops-java-service:local') }}"
+
+  roles:
+    - docker
+    - deploy_stack

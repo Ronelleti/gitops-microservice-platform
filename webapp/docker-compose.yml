@@ -1,0 +1,35 @@
+# Local full-stack smoke test: docker compose -f webapp/docker-compose.yml up --build
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_DB: webapp
+      POSTGRES_USER: webapp
+      POSTGRES_PASSWORD: webapp
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  api:
+    build: ./api
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: webapp
+      DB_USER: webapp
+      DB_PASSWORD: webapp
+    depends_on:
+      - db
+
+  ui:
+    build: ./ui
+    ports:
+      - "8090:80"
+    environment:
+      API_BASE_URL: http://localhost:8080
+    depends_on:
+      - api
+
+volumes:
+  db-data:

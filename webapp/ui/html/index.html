@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GitOps Webapp Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <h1>Items</h1>
+    <form id="item-form">
+      <input id="item-name" type="text" placeholder="New item name" required />
+      <button type="submit">Add</button>
+    </form>
+    <p id="status"></p>
+    <ul id="item-list"></ul>
+  </main>
+
+  <!-- config.js is generated at container startup from config.js.template,
+       injecting the API_BASE_URL environment variable into the browser. -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

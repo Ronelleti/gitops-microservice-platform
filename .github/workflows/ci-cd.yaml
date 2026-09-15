@@ -1,0 +1,223 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  test-app:
+    name: Test application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: pytest app/tests -v
+
+  test-java:
+    name: Build & test Java service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Compile
+        run: javac -d out java-service/src/Main.java
+
+      - name: Smoke test
+        run: |
+          PORT=18081 java -cp out Main &
+          sleep 2
+          curl -sf http://localhost:18081/healthz
+          curl -sf http://localhost:18081/readyz
+          curl -sf http://localhost:18081/
+
+  terraform-validate:
+    name: Terraform fmt & validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env_dir: [terraform, terraform-free-tier]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform fmt
+        run: terraform -chdir=${{ matrix.env_dir }} fmt -check -recursive
+
+      - name: Terraform init (no backend)
+        run: terraform -chdir=${{ matrix.env_dir }} init -backend=false
+
+      - name: Terraform validate
+        run: terraform -chdir=${{ matrix.env_dir }} validate
+
+  ansible-lint:
+    name: Lint Ansible playbook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ansible-lint
+        run: pip install ansible-lint
+      - name: Lint
+        run: ansible-lint ansible/playbook.yml
+
+  test-webapp-api:
+    name: Test webapp API (with real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: webapp
+          POSTGRES_USER: webapp
+          POSTGRES_PASSWORD: webapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r webapp/api/requirements.txt
+          pip install pytest
+
+      - name: Apply schema
+        run: PGPASSWORD=webapp psql -h localhost -U webapp -d webapp -f webapp/db/init.sql
+
+      - name: Run tests against the real DB
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: webapp
+          DB_USER: webapp
+          DB_PASSWORD: webapp
+        run: pytest webapp/api/tests -v
+
+  kustomize-build:
+    name: Render webapp-k8s overlays
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [dev, beta, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+      - name: Build ${{ matrix.env }} overlay
+        run: kustomize build webapp-k8s/overlays/${{ matrix.env }}
+
+  build-and-push:
+    name: Build & push images
+    needs:
+      [
+        test-app,
+        test-java,
+        terraform-validate,
+        ansible-lint,
+        test-webapp-api,
+        kustomize-build,
+      ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Python app image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}-python:latest
+            ${{ env.IMAGE_NAME }}-python:${{ github.sha }}
+
+      - name: Build and push Java service image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./java-service
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}-java:latest
+            ${{ env.IMAGE_NAME }}-java:${{ github.sha }}
+
+      - name: Build and push webapp UI image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./webapp/ui
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}-webapp-ui:latest
+            ${{ env.IMAGE_NAME }}-webapp-ui:${{ github.sha }}
+
+      - name: Build and push webapp API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./webapp/api
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}-webapp-api:latest
+            ${{ env.IMAGE_NAME }}-webapp-api:${{ github.sha }}
+
+      - name: Build and push webapp DB image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./webapp/db
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}-webapp-db:latest
+            ${{ env.IMAGE_NAME }}-webapp-db:${{ github.sha }}
+
+  # Three CD paths exist in this repo, deliberately kept separate:
+  #  1. Kubernetes/ArgoCD, single service (terraform/ + k8s/ + argocd/) -
+  #     pull-based GitOps, but EKS's control plane is never free, so it's
+  #     documented as a "spin up briefly, screenshot, tear down" path.
+  #  2. Free-tier EC2 + Ansible (terraform-free-tier/ + ansible/) - push-based:
+  #     run `ansible-playbook ansible/playbook.yml` by hand (or wire it into
+  #     a manually-triggered `workflow_dispatch` job with self-hosted SSH
+  #     secrets) after this job publishes new image tags. Not automated here
+  #     on purpose, since it needs your own EC2 IP and SSH key as secrets.
+  #  3. Full-stack webapp across dev/beta/prod (webapp-k8s/ + argocd/webapp-*)
+  #     - ArgoCD watches webapp-k8s/overlays/{dev,beta} and auto-syncs on
+  #     every push to main once new image tags land here; prod
+  #     (webapp-prod.yaml) has no automated syncPolicy, so promoting to prod
+  #     always requires a manual `argocd app sync webapp-prod`.

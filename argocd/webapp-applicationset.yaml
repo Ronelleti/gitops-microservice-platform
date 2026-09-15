@@ -1,0 +1,38 @@
+# Generates 2 auto-syncing ArgoCD Applications: dev and beta.
+# Prod is deliberately a separate, plain Application (see webapp-prod.yaml)
+# with NO automated sync block, so promoting to prod always requires a
+# manual click in the ArgoCD UI/CLI rather than happening on every merge.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: webapp-non-prod
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - env: dev
+          - env: beta
+
+  template:
+    metadata:
+      name: "webapp-{{env}}"
+      namespace: argocd
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/your-org/gitops-microservice-platform.git
+        targetRevision: main
+        path: "webapp-k8s/overlays/{{env}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "webapp-{{env}}"
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

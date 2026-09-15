@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: webapp-prod
+
+resources:
+  - ../../base
+
+patches:
+  - path: ingress-patch.yaml
+  - path: ui-config-patch.yaml
+
+images:
+  - name: ghcr.io/your-org/webapp-api
+    newTag: stable
+  - name: ghcr.io/your-org/webapp-ui
+    newTag: stable
+  - name: ghcr.io/your-org/webapp-db
+    newTag: stable
+
+replicas:
+  - name: api
+    count: 2
+  - name: ui
+    count: 2

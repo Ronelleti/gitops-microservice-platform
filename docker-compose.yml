@@ -1,0 +1,19 @@
+# Local dev, and also what Ansible deploys onto the free-tier EC2 instance.
+services:
+  python-app:
+    build: ./app
+    image: ${PYTHON_IMAGE:-gitops-python-app:local}
+    ports:
+      - "8080:8080"
+    environment:
+      APP_VERSION: "0.1.0"
+    restart: unless-stopped
+
+  java-service:
+    build: ./java-service
+    image: ${JAVA_IMAGE:-gitops-java-service:local}
+    ports:
+      - "8081:8081"
+    environment:
+      APP_VERSION: "0.1.0"
+    restart: unless-stopped
