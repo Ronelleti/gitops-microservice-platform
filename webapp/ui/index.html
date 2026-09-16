@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitOps Webapp Demo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- config.js is generated at container startup from config.js.template,
+         injecting the API_BASE_URL environment variable into the browser -
+         must load BEFORE the React bundle. -->
+    <script src="/config.js"></script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

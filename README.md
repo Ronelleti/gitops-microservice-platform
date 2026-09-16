@@ -20,13 +20,20 @@ top of the same repo:
 
 ```
 webapp/
-├── ui/    → static HTML/JS, served by nginx, API URL injected at container start
-├── api/   → Flask + Postgres (psycopg2)
+├── ui/    → React (Vite), served by nginx, API URL injected at container start
+├── api/   → Node.js (Express) + Postgres (pg)
 └── db/    → postgres:16-alpine + baked-in schema (init.sql)
 
 webapp-k8s/
 ├── base/              → Deployment/StatefulSet/Service/ConfigMap/Secret/Ingress
 └── overlays/{dev,beta,prod}/  → namespace, image tag, replica count, hostnames per env
+
+.github/workflows/
+├── ci-cd.yaml    → tests everything, builds images ONCE, tags them by git sha
+├── cd-dev.yaml   → auto: retags that sha's webapp images as `dev` (no rebuild)
+├── cd-beta.yaml  → manual (workflow_dispatch): retags a chosen sha as `beta`
+└── cd-prod.yaml  → manual, `environment: production` (add required reviewers
+                     in repo Settings → Environments for a real approval gate)
 
 argocd/
 ├── webapp-applicationset.yaml  → ArgoCD Applications for dev + beta (auto-sync)
@@ -35,29 +42,84 @@ argocd/
                                     `argocd app sync webapp-prod`)
 ```
 
-**A deliberate gotcha, handled here**: a static UI served to a browser
-cannot call an internal cluster-DNS name like `api.webapp-dev.svc.cluster.local`
-— the browser is outside the cluster. So the UI's `API_BASE_URL` is injected
-at container startup from a ConfigMap and always points at an **Ingress
+**Build once, promote the same artifact** — `ci-cd.yaml` builds each image
+exactly once per push to `main` and tags it only with the immutable git sha
+(plus `:latest`). The three `cd-*.yaml` workflows never rebuild anything —
+they just retag ("promote") that exact same image as `dev`, `beta`, or
+`stable`, which is what each environment's overlay actually deploys. This
+means dev, beta, and prod are provably running the identical bits, just at
+different points in time — the standard pattern for trustworthy promotion.
+
+**A deliberate gotcha, handled here**: a browser-rendered UI cannot call an
+internal cluster-DNS name like `api.webapp-dev.svc.cluster.local` — the
+browser is outside the cluster. So the UI's `API_BASE_URL` is injected at
+container startup from a ConfigMap and always points at an **Ingress
 hostname**, never the internal Service name.
 
-**Try it entirely for free**, no AWS required:
+### Seeing it for real: ArgoCD + the UI, entirely free, on your own machine
+
 ```bash
-# 1. Local full-stack smoke test (no k8s needed)
+# 1. Local full-stack smoke test, no Kubernetes needed
 cd webapp && docker compose up --build
 # UI: http://localhost:8090   API: http://localhost:8080/api/items
-
-# 2. Full GitOps flow on a free local cluster
-kind create cluster
-# install ingress-nginx and ArgoCD (see their respective install docs), then:
-kubectl apply -f argocd/webapp-applicationset.yaml
-kubectl apply -f argocd/webapp-prod.yaml
-# add ui-dev.example.com / api-dev.example.com etc. to /etc/hosts pointing
-# at the ingress controller's IP to browse it locally.
 ```
 
+For the actual GitOps flow with ArgoCD:
+
+```bash
+# 2. Create a local cluster with ingress ports mapped
+kind create cluster --config kind-config.yaml
+
+# 3. Install an ingress controller (kind's own recommended manifest)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
+
+# 4. Install ArgoCD
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl wait --namespace argocd \
+  --for=condition=available deployment/argocd-server --timeout=180s
+
+# 5. Point ArgoCD at your repo (dev + beta auto-sync, prod stays manual)
+kubectl apply -f argocd/webapp-applicationset.yaml
+kubectl apply -f argocd/webapp-prod.yaml
+
+# 6. Open the ArgoCD UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# then visit https://localhost:8080
+# username: admin
+# password:
+kubectl get secret argocd-initial-admin-secret -n argocd \
+  -o jsonpath="{.data.password}" | base64 -d
+
+# 7. Make the app's hostnames resolve locally
+#    Add these lines to /etc/hosts (Linux/Mac) or
+#    C:\Windows\System32\drivers\etc\hosts (Windows):
+#    127.0.0.1  ui-dev.example.com api-dev.example.com
+#    127.0.0.1  ui-beta.example.com api-beta.example.com
+#    127.0.0.1  ui.example.com api.example.com
+
+# 8. Browse the UI
+#    http://ui-dev.example.com   (dev — auto-synced already)
+```
+
+**Promoting to beta/prod**: images only reach `beta`/`stable` tags when you
+deliberately run the promotion workflow. From the Actions tab, run "CD -
+promote to beta" (or prod), supplying the git sha from a successful CI/CD
+run (visible in that run's URL or `git log --oneline`). ArgoCD then syncs
+beta automatically once the tag updates; prod still needs a manual
+`argocd app sync webapp-prod` (or click Sync in the UI) even after the image
+is promoted — two independent gates for production, on purpose.
+
+**One prerequisite**: the 3 `webapp-*` GHCR packages need to be pullable by
+your cluster. Easiest for a personal project: make them public (GitHub
+profile → Packages → each package → Settings → visibility). Otherwise,
+create an `imagePullSecret` in each `webapp-*` namespace with a GHCR PAT.
+
 The exact same `webapp-k8s/overlays/*` manifests apply unchanged to a real
-EKS cluster (Path A) if you want the full cloud demo — just update
+EKS cluster (Path A) if you want the full cloud demo later — just update
 `repoURL` in the ArgoCD manifests to your fork first, either way.
 
 ## A note on "free" on AWS (as of 2026)
@@ -91,10 +153,12 @@ you get emailed before anything is ever actually charged.
 | `k8s/`, `argocd/` | Path A: Kustomize manifests + ArgoCD `Application` |
 | `terraform-free-tier/` | Path B: single EC2 instance, no NAT Gateway, no EKS |
 | `ansible/` | Path B: playbook that installs Docker and deploys the Compose stack |
-| `webapp/` | Path C: UI (nginx+static JS), API (Flask+Postgres), DB (custom Postgres image) |
+| `webapp/` | Path C: UI (React/Vite + nginx), API (Node.js/Express + Postgres), DB (custom Postgres image) |
 | `webapp-k8s/` | Path C: Kustomize base + dev/beta/prod overlays, one namespace each |
 | `argocd/webapp-*.yaml` | Path C: ArgoCD ApplicationSet (dev/beta, auto-sync) + prod Application (manual sync) |
 | `.github/workflows/ci-cd.yaml` | CI for all services + both Terraform envs + webapp-k8s overlays; builds & pushes 5 images total |
+| `.github/workflows/cd-*.yaml` | Per-environment promotion: dev (auto), beta/prod (manual, retag-only) |
+| `kind-config.yaml` | Local Kubernetes cluster config with ingress ports mapped, for testing Path C for free |
 
 ## Running everything locally (no cloud needed)
 

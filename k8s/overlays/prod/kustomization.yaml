@@ -11,5 +11,5 @@ replicas:
     count: 3
 
 images:
-  - name: ghcr.io/ronelleti/gitops-microservice-platform
+  - name: ghcr.io/ronelleti/gitops-microservice-platform-python
     newTag: stable

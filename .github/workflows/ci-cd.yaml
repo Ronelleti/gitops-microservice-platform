@@ -82,7 +82,7 @@ jobs:
         run: ansible-lint ansible/playbook.yml
 
   test-webapp-api:
-    name: Test webapp API (with real Postgres)
+    name: Test webapp API (Node, with real Postgres)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -101,14 +101,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "22"
 
       - name: Install dependencies
-        run: |
-          pip install -r webapp/api/requirements.txt
-          pip install pytest
+        run: npm install
+        working-directory: webapp/api
 
       - name: Apply schema
         run: PGPASSWORD=webapp psql -h localhost -U webapp -d webapp -f webapp/db/init.sql
@@ -120,7 +119,26 @@ jobs:
           DB_NAME: webapp
           DB_USER: webapp
           DB_PASSWORD: webapp
-        run: pytest webapp/api/tests -v
+        run: npm test
+        working-directory: webapp/api
+
+  test-webapp-ui:
+    name: Build webapp UI (React)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: webapp/ui
+
+      - name: Build
+        run: npm run build
+        working-directory: webapp/ui
 
   kustomize-build:
     name: Render webapp-k8s overlays
@@ -144,6 +162,7 @@ jobs:
         terraform-validate,
         ansible-lint,
         test-webapp-api,
+        test-webapp-ui,
         kustomize-build,
       ]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -155,6 +174,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Compute lowercase image name
+        # Docker requires all-lowercase repository names, but
+        # github.repository preserves the actual casing of the GitHub
+        # repo ("Ronelleti/..."), so it can't be used directly as a tag.
         run: |
           echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
@@ -183,6 +205,12 @@ jobs:
             ${{ env.IMAGE_NAME }}-java:latest
             ${{ env.IMAGE_NAME }}-java:${{ github.sha }}
 
+      # webapp-ui/api/db are deliberately tagged ONLY by :latest and the
+      # immutable git sha here - NOT by dev/beta/stable. Those environment
+      # tags are applied by the separate cd-dev/cd-beta/cd-prod workflows,
+      # which promote (retag) this exact same image rather than rebuilding
+      # it - "build once, promote the same artifact" instead of building
+      # separately per environment.
       - name: Build and push webapp UI image
         uses: docker/build-push-action@v5
         with:
@@ -220,7 +248,9 @@ jobs:
   #     secrets) after this job publishes new image tags. Not automated here
   #     on purpose, since it needs your own EC2 IP and SSH key as secrets.
   #  3. Full-stack webapp across dev/beta/prod (webapp-k8s/ + argocd/webapp-*)
-  #     - ArgoCD watches webapp-k8s/overlays/{dev,beta} and auto-syncs on
-  #     every push to main once new image tags land here; prod
-  #     (webapp-prod.yaml) has no automated syncPolicy, so promoting to prod
-  #     always requires a manual `argocd app sync webapp-prod`.
+  #     - this job only builds and tags by :sha. Promotion to an actual
+  #     environment (dev/beta/stable image tags, which is what ArgoCD's
+  #     overlays actually deploy) happens in cd-dev.yaml (automatic),
+  #     cd-beta.yaml, and cd-prod.yaml (both workflow_dispatch, and prod
+  #     can be gated with required reviewers via a GitHub "production"
+  #     Environment).

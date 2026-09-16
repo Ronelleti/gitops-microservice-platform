@@ -11,11 +11,11 @@ patches:
   - path: ui-config-patch.yaml
 
 images:
-  - name: ghcr.io/ronelleti/webapp-api
+  - name: ghcr.io/ronelleti/gitops-microservice-platform-webapp-api
     newTag: beta
-  - name: ghcr.io/ronelleti/webapp-ui
+  - name: ghcr.io/ronelleti/gitops-microservice-platform-webapp-ui
     newTag: beta
-  - name: ghcr.io/ronelleti/webapp-db
+  - name: ghcr.io/ronelleti/gitops-microservice-platform-webapp-db
     newTag: beta
 
 replicas:

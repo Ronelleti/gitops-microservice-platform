@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/ronelleti/webapp-api:latest
+          image: ghcr.io/ronelleti/gitops-microservice-platform-webapp-api:latest
           ports:
             - containerPort: 8080
           envFrom:
