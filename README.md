@@ -29,11 +29,16 @@ webapp-k8s/
 └── overlays/{dev,beta,prod}/  → namespace, image tag, replica count, hostnames per env
 
 .github/workflows/
-├── ci-cd.yaml    → tests everything, builds images ONCE, tags them by git sha
-├── cd-dev.yaml   → auto: retags that sha's webapp images as `dev` (no rebuild)
-├── cd-beta.yaml  → manual (workflow_dispatch): retags a chosen sha as `beta`
-└── cd-prod.yaml  → manual, `environment: production` (add required reviewers
-                     in repo Settings → Environments for a real approval gate)
+├── ci-cd.yaml           → tests everything, builds images ONCE, tags them by git sha
+├── cd-dev.yaml          → auto: retags that sha's webapp images as `dev` (no rebuild)
+├── cd-beta.yaml         → manual (workflow_dispatch): retags a chosen sha as `beta`
+├── cd-prod.yaml         → manual, `environment: production` (add required reviewers
+│                           in repo Settings → Environments for a real approval gate)
+├── cd-swap-dev-beta.yaml → manual: exchanges dev's and beta's *current* images,
+│                           `environment: beta` — no sha input, no rebuild
+└── cd-swap-dev-prod.yaml → manual: exchanges dev's and prod's (`stable`) *current*
+                             images, `environment: production` — same approval gate
+                             as cd-prod.yaml
 
 argocd/
 ├── webapp-applicationset.yaml  → ArgoCD Applications for dev + beta (auto-sync)
