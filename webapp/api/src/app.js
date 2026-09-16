@@ -1,8 +1,10 @@
 import express from "express";
 import { pool } from "./db.js";
+import cors from "cors";
 
 export function createApp() {
   const app = express();
+  app.use(cors());
   app.use(express.json());
 
   // Liveness: process is up. Deliberately does NOT touch the DB - see the
